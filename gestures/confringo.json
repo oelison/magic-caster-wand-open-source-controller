@@ -1,0 +1,8 @@
+{
+  "spell": "Confringo",
+  "segments": [
+    { "dir": 90,  "l": 300 },
+    { "dir": 230, "l": 390 },
+    { "dir": 90,  "l": 310 }
+  ]
+}

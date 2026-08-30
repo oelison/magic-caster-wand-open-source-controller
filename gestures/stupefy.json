@@ -1,0 +1,7 @@
+{
+    "spell": "Stupefy",
+    "segments": [
+        { "dir": 213, "l": 525 },
+        { "dir": 90, "l": 475 }
+    ]
+}

@@ -1,0 +1,8 @@
+{
+    "spell": "Piertotum Locomotor",
+    "segments": [
+        { "dir": 225, "l": 255 },
+        { "dir": 90, "l": 390 },
+        { "dir": 0, "l": 355 }
+    ]
+}

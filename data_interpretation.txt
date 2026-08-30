@@ -1,0 +1,26 @@
+Aufrecht gy=2000
+links gz=2000
+rechts gz=-2000
+Vorne gx=-2000
+aufm Kopf gx=2000
+nach unten gy=-2000
+
+ax +20
+ay +130
+az -3
+
+rotation around Axis ay
+up down az
+left right ax
+
+        y
+
+        0°
+         ↑
+         |
+270° ←   |   → 90° x
+         |
+         ↓
+       180°
+
+-> atan2(dx, dy)

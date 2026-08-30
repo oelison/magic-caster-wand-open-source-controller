@@ -1,0 +1,10 @@
+{
+    "spell": "The Sleeping Charm",
+    "segments": [
+        { "dir": 90, "l": 140 },
+        { "dir": 215, "l": 180 },
+        { "dir": 90, "l": 280 },
+        { "dir": 225, "l": 225 },
+        { "dir": 90, "l": 175 }
+    ]
+}

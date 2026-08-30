@@ -1,0 +1,7 @@
+{
+  "spell": "Expelliarmus",
+  "segments": [
+    { "dir": 90,  "l": 450 },
+    { "dir": 180, "l": 550 }
+  ]
+}

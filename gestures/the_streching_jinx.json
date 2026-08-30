@@ -1,0 +1,8 @@
+{
+    "spell": "The Stretching Jinx",
+    "segments": [
+        { "dir": 85, "l": 480 },
+        { "dir": 210, "l": 75 },
+        { "dir": 90, "l": 445 }
+    ]
+}

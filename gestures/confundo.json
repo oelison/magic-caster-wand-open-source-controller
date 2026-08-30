@@ -1,0 +1,7 @@
+{
+    "spell": "Confundo",
+    "segments": [
+        { "dir": 150, "l": 511 },
+        { "dir": 270, "l": 489 }
+    ]
+}

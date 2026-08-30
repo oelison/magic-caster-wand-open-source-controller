@@ -1,0 +1,5 @@
+__pycache__
+.pio
+.vscode
+venv
+local_data
