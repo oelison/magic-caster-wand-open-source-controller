@@ -840,8 +840,8 @@ bool sendWandCommand(size_t commandIndex)
         {0x60}, // Command 2
         {0x40}, // Command 3
         {0xc8}, // Command 4
-        {0x68, 0x50, 0x20, 0x00}, // Command 5
-        {0x68, 0x50, 0xff, 0x00}, // Command 6
+        {0x68, 0x50, 0x64, 0x00}, // Command 5
+        {0x68, 0x50, 0xc8, 0x00}, // Command 6
         {0x68, 0x22, 0x00, 0x00, 0x00, 0xff, 0x10, 0x00}, // Command 7
         {0x68, 0x22, 0x00, 0x00, 0xff, 0x00, 0x10, 0x00}, // Command 8
         {0x68, 0x22, 0x00, 0xff, 0x00, 0x00, 0x10, 0x00}, // Command 9
@@ -1105,18 +1105,20 @@ void loop()
     if (fingerPressed != oldFingerPressed) {
         oldFingerPressed = fingerPressed;
         if (fingerPressed) {
-            //sendWandCommand(3);
+            if (NVMData::get().GetVibration()) {
+                sendWandCommand(5);
+            }
             sendWandCommand(7);
-            //sendWandCommand(2);
         } else {
-            //sendWandCommand(3);
+            if (NVMData::get().GetVibration()) {
+                sendWandCommand(6);
+            }
             if (spellFound) {
                 sendWandCommand(8);
             } else {
                 sendWandCommand(9);
             }
             sendWandCommand(13);
-            //sendWandCommand(2);
         }
     }   
     delay(10);

@@ -17,6 +17,7 @@ private:
     const char* prefKeyOperatingHourCounter = "OHC";
     const char* prefKeyHouse = "house";
     const char* prefKeyPatronus = "patronus";
+    const char* prefKeyVibration = "vibration";
     const int prefKeyPowerSourceSerialDefault = 0;
     const uint32_t prefKeyOffsetDefault = 0;
 
@@ -30,9 +31,7 @@ private:
     String WandAddress = "";
     String House = "";
     String Patronus = "";
-    int PV_U_ID = 0;
-    int PV_I_ID = 0;
-    int PV_P_ID = 0;
+    bool Vibration = true;
     int CurrentOffset = 0;
     NVMData(/* args */);
 public:
@@ -50,13 +49,15 @@ public:
     void SetCCUIDs(int U_ID, int I_ID, int P_ID);
     void SetCurrentOffset(int offset);
     void SetHouse(const String &house);
-void SetPatronus(const String &patronus);
+    void SetPatronus(const String &patronus);
+    void SetVibration(bool vibration);
     String GetNetName();
     String GetNetPassword();
     String GetWandName();
     String GetWandAddress();
     String GetHouse();
     String GetPatronus();
+    bool GetVibration();
     bool NetDataValid();
 };
 
@@ -70,6 +71,7 @@ void NVMData::Init()
     WandAddress = preferences.getString(prefKeyWandAddress, "");
     House = preferences.getString(prefKeyHouse, "");
     Patronus = preferences.getString(prefKeyPatronus, "");
+    Vibration = preferences.getBool(prefKeyVibration, true);
     preferences.end();
     if (NetName != prefDefaultValue)
     {
@@ -158,6 +160,19 @@ String NVMData::GetWandName()
 String NVMData::GetWandAddress()
 {
     return WandAddress;
+}
+bool NVMData::GetVibration()
+{
+    return Vibration;
+}
+void NVMData::SetVibration(bool vibration)
+{
+    Vibration = vibration;
+
+    Preferences preferences;
+    preferences.begin(prefKeyNamespace, false);
+    preferences.putBool(prefKeyVibration, Vibration);
+    preferences.end();
 }
 void NVMData::StoreNetData() {
     Preferences preferences;

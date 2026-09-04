@@ -189,6 +189,7 @@ private:
     void handleWands();
     void handleSelectWand();
     void handleSelectSettings();
+    void handleVibration();
     void handleGesture();
     void handleRecordedGesture();
     String generateGestureSvg(size_t gestureIndex);
@@ -226,6 +227,7 @@ void WebPage::Init()
     server.on("/wands", std::bind(&WebPage::handleWands, this));
     server.on("/selectwand", HTTP_POST, std::bind(&WebPage::handleSelectWand, this));
     server.on("/selectsettings", HTTP_POST, std::bind(&WebPage::handleSelectSettings, this));
+    server.on("/vibration", std::bind(&WebPage::handleVibration, this));
     server.on("/gesture", std::bind(&WebPage::handleGesture, this));
     server.on("/recorded_gesture", std::bind(&WebPage::handleRecordedGesture, this));
     // choose bin file
@@ -255,6 +257,11 @@ String WebPage::GenFooter()
 {
     String message = "";
     message += "\t<p>---------------------------</p>\n";
+    message += "<script>";
+    message += "function setVibration(enabled) {";
+    message += "    fetch('/vibration?enabled=' + (enabled ? '1' : '0'))";
+    message += "}";
+    message += "</script>";
     message += "</body>";
     message += "</html>\n";
     return message;
@@ -330,6 +337,12 @@ void WebPage::handleChange()
     returnMessage += "</body>";
     returnMessage += "</html>";
     server.send(200, "text/html", returnMessage);
+}
+void WebPage::handleVibration()
+{
+    const bool enabled = server.arg("enabled") == "1";
+    NVMData::get().SetVibration(enabled);
+    server.send(204);
 }
 void WebPage::handleFirmware()
 {
@@ -484,15 +497,24 @@ void WebPage::handleRoot()
         }
         message += ">" + String(patronus) + "</option>";
     }
-
     message += "</select>";
     message += "</div>";
-
     message += "<div>";
     message += "<button type=\"submit\">Speichern</button>";
     message += "</div>";
-
     message += "</form>";
+
+    message += "<h2>Vibration</h2>";
+    message += "<div>";
+    message += "<label for=\"vibration\">Vibration: </label>";
+    message += "<input type=\"checkbox\" id=\"vibration\" name=\"vibration\" onchange=\"setVibration(this.checked)\"";
+    if (NVMData::get().GetVibration())
+    {
+        message += " checked";
+    }
+    message += ">";
+    message += "</div>";
+
     message += "<p>Bluetooth: " + DynamicData::get().lastBLEEvent + "</p>";
     message += "<p>Verbindung: " + String(DynamicData::get().connected ? "verbunden" : "nicht verbunden") + "</p>";
     message += "<p>IMU: GX=" + String(DynamicData::get().gx) + " GY=" + String(DynamicData::get().gy) + " GZ=" + String(DynamicData::get().gz);
