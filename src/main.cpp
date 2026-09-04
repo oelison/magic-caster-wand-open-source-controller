@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <NimBLEDevice.h>
 
 #include "DynamicData.h"
@@ -7,9 +8,22 @@
 #include "NVMData.h"
 #include "WebPage.h"
 
+WiFiUDP spellUdp;
+
+constexpr uint16_t SPELL_BROADCAST_PORT = 8888;
+
 namespace {
 constexpr char WAND_NAME_PREFIX[] = "MCW-";
 constexpr uint32_t SCAN_DURATION_MS = 10 * 1000;
+constexpr uint32_t WAND_RESCAN_INTERVAL_MS = 10000;
+constexpr uint32_t IMU_INIT_TIMEOUT_MS = 1000;
+
+volatile uint32_t lastImuDataAt = 0;
+volatile bool fingerPressed = false;
+volatile bool oldFingerPressed = false;
+volatile bool spellFound = false;
+
+uint32_t lastWandScan = 0;
 constexpr char SERVICE_UUID[] = "57420001-587E-48A0-974C-544D6163C577";
 constexpr char SERVICE_NOTIFY[] = "57420003-587E-48A0-974C-544D6163C577";
 constexpr char SERVICE_WRITE[] = "57420002-587E-48A0-974C-544D6163C577";
@@ -25,6 +39,22 @@ constexpr int ANGLE_STEP = 1;
 constexpr int DIR_COUNT = 360;
 constexpr int MAX_DIR_ERROR = 20;
 constexpr int MAX_LEN_ERROR = 200;
+
+void broadcastSpell(const String &spellName)
+{
+    String message = "spell:";
+    message += spellName;
+    message += ":";
+    message += NVMData::get().GetHouse();
+    message += ":";
+    message += NVMData::get().GetPatronus();
+
+    spellUdp.beginPacket(IPAddress(255, 255, 255, 255), SPELL_BROADCAST_PORT);
+    spellUdp.print(message);
+    spellUdp.endPacket();
+
+    Serial.printf("Spell broadcast: %s\n", message.c_str());
+}
 
 void setupWiFi()
 {
@@ -63,9 +93,6 @@ class WandScanCallbacks : public NimBLEScanCallbacks
         DynamicData::get().bleAdvertisementsSeen++;
         if (name.startsWith(WAND_NAME_PREFIX)) {
             DynamicData::get().addWand(name, String(device->getAddress().toString().c_str()), device->getRSSI());
-            Serial.printf("MCW discovered: %s (%s), RSSI %d, connectable=%d, address-type=%u\n",
-                          name.c_str(), device->getAddress().toString().c_str(), device->getRSSI(),
-                          device->isConnectable(), device->getAddress().getType());
         }
         if (DynamicData::get().connected || NVMData::get().GetWandAddress().length() == 0) return;
         if (String(device->getAddress().toString().c_str()) == NVMData::get().GetWandAddress()) {
@@ -78,11 +105,10 @@ class WandScanCallbacks : public NimBLEScanCallbacks
     }
 };
 
-void startScan()
+void startScan(bool resetWandList)
 {
     DynamicData::get().lastBLEEvent = "Scanning for MCW devices";
-    Serial.println("Starting BLE scan for selected wand.");
-    NimBLEDevice::getScan()->start(SCAN_DURATION_MS, false, true);
+    NimBLEDevice::getScan()->start(SCAN_DURATION_MS, false, resetWandList);
 }
 
 struct segmentation_t {
@@ -101,11 +127,7 @@ struct point_t {
     float y;
 };
 
-void create_segments(
-    point_t *points,
-    int pointCount,
-    CandidateSegment *segments,
-    int *segmentCount)
+void create_segments(point_t *points, int pointCount, CandidateSegment *segments, int *segmentCount)
 {
     *segmentCount = 0;
 
@@ -113,7 +135,6 @@ void create_segments(
 
         float dx = points[i].x - points[i - 1].x;
         float dy = points[i].y - points[i - 1].y;
-
         float length = hypotf(dx, dy);
 
         if (length < 1e-6f) {
@@ -132,18 +153,13 @@ void create_segments(
             direction += DIR_COUNT;
         }
 
-        segments[*segmentCount].direction =
-            static_cast<uint16_t>(direction);
-
+        segments[*segmentCount].direction = static_cast<uint16_t>(direction);
         segments[*segmentCount].length = length;
-
         (*segmentCount)++;
     }
 }
 
-void normalize_segments(
-    CandidateSegment *segments,
-    int segmentCount)
+void normalize_segments(CandidateSegment *segments, int segmentCount) 
 {
     float totalLength = 0.0f;
 
@@ -156,19 +172,13 @@ void normalize_segments(
     }
 
     for (int i = 0; i < segmentCount; ++i) {
-        segments[i].length =
-            roundf(
-                segments[i].length /
-                totalLength *
-                1000.0f
-            );
+        segments[i].length = roundf(segments[i].length / totalLength * 1000.0f);
     }
 }
 
 int angle_diff(int a1, int a2)
 {
     int d = abs(a1 - a2);
-
     return (d < 360 - d) ? d : 360 - d;
 }
 
@@ -177,6 +187,7 @@ struct test_point_t {
     float y;
 };
 
+#ifdef DEBUG_GESTURE_POINTS
 static const test_point_t testGesture[] = {
     {0.002f,  0.001f},
     {0.004f,  0.001f},
@@ -334,13 +345,10 @@ static const test_point_t testGesture[] = {
 
 constexpr int TEST_GESTURE_COUNT =
     sizeof(testGesture) / sizeof(testGesture[0]);
-
+#endif
 bool keep[1000];
 
-float perpendicular_distance(
-    float px, float py,
-    float ax, float ay,
-    float bx, float by)
+float perpendicular_distance(float px, float py, float ax, float ay, float bx, float by)
 {
     if (ax == bx && ay == by) {
         float dx = px - ax;
@@ -349,26 +357,18 @@ float perpendicular_distance(
     }
 
     float num = fabsf(
-        (by - ay) * px
+          (by - ay) * px
         - (bx - ax) * py
         + bx * ay
         - by * ax
     );
 
-    float den = sqrtf(
-        (bx - ax) * (bx - ax)
-        + (by - ay) * (by - ay)
-    );
+    float den = sqrtf( (bx - ax) * (bx - ax) + (by - ay) * (by - ay) );
 
     return num / den;
 }
 
-void douglas_peucker(
-    point_t *points,
-    int start,
-    int end,
-    float epsilon,
-    bool *keep)
+void douglas_peucker(point_t *points, int start, int end, float epsilon, bool *keep)
 {
     if (end - start < 2) {
         return;
@@ -385,14 +385,7 @@ void douglas_peucker(
 
     for (int i = start + 1; i < end; ++i) {
 
-        float d = perpendicular_distance(
-            points[i].x,
-            points[i].y,
-            startX,
-            startY,
-            endX,
-            endY
-        );
+        float d = perpendicular_distance(points[i].x, points[i].y, startX, startY, endX, endY);
 
         if (d > max_distance) {
             max_distance = d;
@@ -401,31 +394,13 @@ void douglas_peucker(
     }
 
     if (max_distance > epsilon) {
-
         keep[index] = true;
-
-        douglas_peucker(
-            points,
-            start,
-            index,
-            epsilon,
-            keep
-        );
-
-        douglas_peucker(
-            points,
-            index,
-            end,
-            epsilon,
-            keep
-        );
+        douglas_peucker(points, start, index, epsilon, keep);
+        douglas_peucker(points, index, end, epsilon, keep);
     }
 }
 
-int simplify_points(
-    point_t *points,
-    int pointCount,
-    float epsilon)
+int simplify_points(point_t *points, int pointCount, float epsilon)
 {
     if (pointCount < 3) {
         return pointCount;
@@ -434,18 +409,11 @@ int simplify_points(
     keep[0] = true;
     keep[pointCount - 1] = true;
 
-    douglas_peucker(
-        points,
-        0,
-        pointCount - 1,
-        epsilon,
-        keep
-    );
+    douglas_peucker(points, 0, pointCount - 1, epsilon, keep);
 
     int newCount = 0;
 
     for (int i = 0; i < pointCount; ++i) {
-
         if (keep[i]) {
             points[newCount++] = points[i];
         }
@@ -454,10 +422,7 @@ int simplify_points(
     return newCount;
 }
 
-int match_spell(
-    const CandidateSegment *candidate,
-    int candidateCount,
-    const GestureReference &spell)
+int match_spell(const CandidateSegment *candidate, int candidateCount, const GestureReference &spell)
 {
     if (candidateCount != spell.segmentCount) {
         return -1;
@@ -477,6 +442,7 @@ int match_spell(
             static_cast<int>(spell.segments[i].length)
         );
 
+        Serial.printf(" Spell name: %s\n", spell.name);
         Serial.printf(
             "    Seg %d: "
             "dir %d/%d err=%d°  "
@@ -498,11 +464,9 @@ int match_spell(
             return -1;
         }
 
-        score +=
-            (MAX_DIR_ERROR - dirError) * 100;
+        score += (MAX_DIR_ERROR - dirError) * 100;
 
-        score +=
-            (MAX_LEN_ERROR - lenError);
+        score += (MAX_LEN_ERROR - lenError);
     }
 
     return score;
@@ -548,7 +512,7 @@ const GestureReference* recognize_spell(
 }
 
 point_t points[1000];
-
+#ifdef DEBUG_GESTURE_POINTS
 void test_gesture_recognition(int pointCount)
 {
     Serial.println();
@@ -643,6 +607,7 @@ void test_douglas_peucker()
     }
     test_gesture_recognition(simple_count);
 }
+#endif
 
 int recognize_gesture()
 {
@@ -659,10 +624,12 @@ int recognize_gesture()
     }
 
     // print points for debugging
+    #ifdef DEBUG_GESTURE_POINTS
     Serial.println("Gesture points:");
     for (int i = 0; i < count; ++i) {
         Serial.printf("Point %d: (%.3f, %.3f)\n", i, points[i].x, points[i].y);
     }
+    #endif
     int simple_count = simplify_points(points, count, 0.1f);
     
     Serial.printf("Gesture simplified from %d to %d points\n", count, simple_count);
@@ -673,6 +640,11 @@ int recognize_gesture()
             points[i].x,
             points[i].y
         );
+        if (i < 20) {
+            DynamicData::get().posXreduced[i] = points[i].x;
+            DynamicData::get().posYreduced[i] = points[i].y;
+            DynamicData::get().reducedSampleCounter = i + 1;
+        }
     }
 
     CandidateSegment segments[10];
@@ -718,6 +690,8 @@ int recognize_gesture()
         return 0;
     }
 
+    broadcastSpell(spell->name);
+
     int spellIndex =
         spell - kGestureReferences;
 
@@ -745,9 +719,11 @@ void gestureComplete()
     if (spellIndex > 0) {
         Serial.printf("Gesture Complete - Recognized spell index: %d\n", spellIndex);
         DynamicData::get().lastBLEEvent = "Gesture Complete - Recognized spell index: " + String(spellIndex);
+        spellFound = true;
     } else {
         Serial.println("No matching spell recognized.");
         DynamicData::get().lastBLEEvent = "No matching spell recognized.";
+        spellFound = false;
     }
 }
 
@@ -770,6 +746,127 @@ float gestureAZFilter = 0;
 float gestureGxSum = 0;
 float gestureGzSum = 0;
 
+bool initializeHapticHardware()
+{
+    if (writeCharacteristic == nullptr)
+        return false;
+
+    static const uint8_t cmds[][3] = {
+        {0x00},
+        {0x08},
+        {0x09},
+
+        {0x0e, 0x02},
+        {0x0e, 0x04},
+        {0x0e, 0x08},
+        {0x0e, 0x09},
+        {0x0e, 0x01},
+
+        {0xdd, 0x00},
+        {0xdd, 0x04},
+        {0xdd, 0x01},
+        {0xdd, 0x05},
+        {0xdd, 0x02},
+        {0xdd, 0x06},
+        {0xdd, 0x03},
+        {0xdd, 0x07},
+
+        {0xdc, 0x00, 0x07},
+        {0xdc, 0x04, 0x0a},
+        {0xdc, 0x01, 0x07},
+        {0xdc, 0x05, 0x0a},
+        {0xdc, 0x02, 0x07},
+        {0xdc, 0x06, 0x0a},
+        {0xdc, 0x03, 0x07},
+        {0xdc, 0x07, 0x0a},
+
+        {0xdd, 0x00},
+        {0xdd, 0x04},
+        {0xdd, 0x01},
+        {0xdd, 0x05},
+        {0xdd, 0x02},
+        {0xdd, 0x06},
+        {0xdd, 0x03},
+        {0xdd, 0x07}
+    };
+
+    static const uint8_t lengths[] = {
+        1, 1, 1,
+
+        2, 2, 2, 2, 2,
+
+        2, 2, 2, 2,
+        2, 2, 2, 2,
+
+        3, 3, 3, 3,
+        3, 3, 3, 3,
+
+        2, 2, 2, 2,
+        2, 2, 2, 2
+    };
+
+    constexpr size_t commandCount =
+        sizeof(lengths) / sizeof(lengths[0]);
+
+    for (size_t i = 0; i < commandCount; ++i)
+    {
+        if (!writeCharacteristic->writeValue(
+                cmds[i],
+                lengths[i],
+                true))
+        {
+            Serial.printf(
+                "Haptic init failed at command %u\n",
+                static_cast<unsigned>(i)
+            );
+            return false;
+        }
+    }
+
+    delay(100);
+
+    Serial.println("Haptic hardware initialized.");
+    return true;
+}
+
+bool sendWandCommand(size_t commandIndex)
+{
+    if (writeCharacteristic == nullptr)
+        return false;
+
+    const uint8_t commands[][8] = {
+        {0x30, 0x00, 0x80}, // Command 0
+        {0x10, 0x01}, // Command 1
+        {0x60}, // Command 2
+        {0x40}, // Command 3
+        {0xc8}, // Command 4
+        {0x68, 0x50, 0x20, 0x00}, // Command 5
+        {0x68, 0x50, 0xff, 0x00}, // Command 6
+        {0x68, 0x22, 0x00, 0x00, 0x00, 0xff, 0x10, 0x00}, // Command 7
+        {0x68, 0x22, 0x00, 0x00, 0xff, 0x00, 0x10, 0x00}, // Command 8
+        {0x68, 0x22, 0x00, 0xff, 0x00, 0x00, 0x10, 0x00}, // Command 9
+        {0x68, 0x22, 0x01, 0x00, 0xff, 0x00, 0x20, 0x03}, // Command 10
+        {0x68, 0x22, 0x02, 0x00, 0x00, 0xff, 0x20, 0x03}, // Command 11
+        {0x68, 0x22, 0x03, 0xff, 0xff, 0xff, 0x00, 0x01}, // Command 12
+        {0x68, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f}, // Command 13
+        {0x68, 0x22, 0x01, 0x00, 0x00, 0x00, 0x00, 0x04}, // Command 14
+        {0x68, 0x22, 0x02, 0x00, 0x00, 0x00, 0x00, 0x04}, // Command 15
+        {0x68, 0x22, 0x03, 0x00, 0x00, 0x00, 0x00, 0x04} // Command 16
+    };
+
+    const size_t commandLengths[] = {3, 2, 1, 1, 1, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8};
+
+    
+        Serial.printf("Sending command %u.\n", commandIndex);
+
+        if (!writeCharacteristic->writeValue(commands[commandIndex], commandLengths[commandIndex], true)) {
+            Serial.printf("Command %u failed.\n", commandIndex);
+            return false;
+        }
+       
+    return true;
+}
+
 void notificationHandler(NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool)
 {
     if (length == 0) return;
@@ -785,12 +882,14 @@ void notificationHandler(NimBLERemoteCharacteristic *, uint8_t *data, size_t len
                 DynamicData::get().gestureRecording = false;
                 Serial.printf("Gesture recording stopped; %d samples recorded.\n", DynamicData::get().sampleCounter);
                 gestureComplete();
+                fingerPressed = false;
             } else if (DynamicData::get().finger == 0x0f) {
                 DynamicData::get().lastBLEEvent = "Finger pressed";
                 DynamicData::get().lastFinger = DynamicData::get().finger;
                 DynamicData::get().sampleCounter = 0;
                 DynamicData::get().gestureRecording = true;
                 Serial.println("Gesture recording started.");
+                fingerPressed = true;
             }
         }
         return;
@@ -798,6 +897,7 @@ void notificationHandler(NimBLERemoteCharacteristic *, uint8_t *data, size_t len
     if (data[0] != 0x2c || length < 4) return;
     const uint8_t sampleCount = data[3];
     if (length < 4 + static_cast<size_t>(sampleCount) * 12) return;
+    lastImuDataAt = millis();
     for (uint8_t i = 0; i < sampleCount; ++i) {
         const uint8_t *sample = data + 4 + i * 12;
         auto readInt16 = [](const uint8_t *value) {
@@ -860,6 +960,23 @@ class WandClientCallbacks : public NimBLEClientCallbacks
     }
 };
 
+bool initializeWand()
+{
+    for (size_t i = 0; i < 3; ++i)
+    {
+        Serial.printf("Sending initialization command %u.\n", i + 1);
+
+        if (!sendWandCommand(i)) {
+            Serial.printf("Initialization command %u failed.\n", i + 1);
+            return false;
+        }
+        delay(20);
+    }
+    Serial.println("Wand initialized successfully.");
+    DynamicData::get().lastBLEEvent = "Wand initialized successfully";
+    return true;
+}
+
 bool connectSelectedWand()
 {
     connectPending = false;
@@ -902,22 +1019,18 @@ bool connectSelectedWand()
         wandClient->disconnect();
         return false;
     }
-    const uint8_t commands[][3] = {{0x30, 0x00, 0x80}, {0x10, 0x01}, {0x60}};
-    const size_t commandLengths[] = {3, 2, 1};
-    for (size_t i = 0; i < 3; ++i) {
-        Serial.printf("Sending initialization command %u.\n", i + 1);
-        if (!writeCharacteristic->writeValue(commands[i], commandLengths[i], true)) {
-            Serial.printf("Initialization command %u failed.\n", i + 1);
-            DynamicData::get().lastBLEEvent = "Wand initialization command failed";
-            wandClient->disconnect();
-            return false;
-        }
-        delay(200);
+    if (!initializeWand()) {
+        Serial.println("Wand initialization failed.");
+        DynamicData::get().lastBLEEvent = "Wand initialization failed";
+        wandClient->disconnect();
+        return false;
     }
+    //initializeHapticHardware();
+    lastImuDataAt = millis();
     DynamicData::get().connected = true;
     DynamicData::get().clientConnected = true;
     DynamicData::get().connections++;
-    DynamicData::get().lastBLEEvent = "Connected to selected wand; receiving IMU data";
+    DynamicData::get().lastBLEEvent = "Connected to selected wand; waiting for IMU data";
     Serial.println("Wand connected, subscribed, and initialized. Waiting for IMU data.");
     return true;
 }
@@ -940,7 +1053,9 @@ void setup()
     scan->setInterval(100);
     scan->setWindow(80);
     scanRequested = true;
+    #ifdef DEBUG_GESTURE_POINTS
     test_douglas_peucker();
+    #endif
 }
 
 void checkNetworkSet()
@@ -965,9 +1080,44 @@ void loop()
         scanRequested = true;
     }
     if (connectPending) connectSelectedWand();
-    if (scanRequested && !NimBLEDevice::getScan()->isScanning() && !DynamicData::get().connected) {
+    if (scanRequested && !NimBLEDevice::getScan()->isScanning()) {
         scanRequested = false;
-        startScan();
+        startScan(true);
     }
+    if (DynamicData::get().connected &&
+        !NimBLEDevice::getScan()->isScanning() &&
+        millis() - lastWandScan >= WAND_RESCAN_INTERVAL_MS)
+    {
+        lastWandScan = millis();
+        startScan(false);
+    }
+    if (DynamicData::get().connected && millis() - lastImuDataAt >= IMU_INIT_TIMEOUT_MS) {
+        Serial.println("No IMU data received after initialization. Retrying initialization.");
+
+        lastImuDataAt = millis();
+
+        if (!initializeWand())
+        {
+            Serial.println("Retry initialization failed.");
+            DynamicData::get().lastBLEEvent = "Wand initialization failed after timeout";
+        }
+    }
+    if (fingerPressed != oldFingerPressed) {
+        oldFingerPressed = fingerPressed;
+        if (fingerPressed) {
+            //sendWandCommand(3);
+            sendWandCommand(7);
+            //sendWandCommand(2);
+        } else {
+            //sendWandCommand(3);
+            if (spellFound) {
+                sendWandCommand(8);
+            } else {
+                sendWandCommand(9);
+            }
+            sendWandCommand(13);
+            //sendWandCommand(2);
+        }
+    }   
     delay(10);
 }

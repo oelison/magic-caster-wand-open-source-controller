@@ -8,6 +8,164 @@
 #include "NVMData.h"
 #include "DynamicData.h"
 
+static const char* kHouses[] = {
+    "Gryffindor",
+    "Hufflepuff",
+    "Ravenclaw",
+    "Slytherin"
+};
+
+static constexpr size_t kHouseCount = sizeof(kHouses) / sizeof(kHouses[0]);
+
+static const char* kPatroni[] = {
+    "aardvark",
+    "abraxanwingedhorse",
+    "adder",
+    "albatross",
+    "badger",
+    "bassetthound",
+    "bat",
+    "baymare",
+    "baystallion",
+    "beagle",
+    "bigdog",
+    "blackandwhitecat",
+    "blackbear",
+    "blackbird",
+    "blackmamba",
+    "blackmare",
+    "blackstallion",
+    "blackswan",
+    "bloodhound",
+    "borzoi",
+    "brownbear",
+    "brownhare",
+    "brownowl",
+    "buffalo",
+    "buzzard",
+    "calicocat",
+    "capuchinmonkey",
+    "cheetah",
+    "chestnutmare",
+    "chestnutstallion",
+    "chowdog",
+    "crow",
+    "dapplegreymare",
+    "dapplegreystallion",
+    "deerhound",
+    "doe",
+    "dolphin",
+    "dragon",
+    "dragonfly",
+    "dunmare",
+    "dunstallion",
+    "eagle",
+    "eagleowl",
+    "elephant",
+    "erumpent",
+    "falcon",
+    "fieldmouse",
+    "firedwellingsalamander",
+    "fox",
+    "foxterrier",
+    "gingercat",
+    "goshawk",
+    "granianwingedhorse",
+    "grasssnake",
+    "greatgreyowl",
+    "greyhound",
+    "greysquirrel",
+    "hedgehog",
+    "heron",
+    "hippogriff",
+    "hummingbird",
+    "husky",
+    "hyena",
+    "ibizanhound",
+    "impala",
+    "irishwolfhound",
+    "kingcobra",
+    "kingfisher",
+    "leopard",
+    "leopardess",
+    "lion",
+    "lioness",
+    "littleowl",
+    "lynx",
+    "magpie",
+    "manxcat",
+    "marshharrier",
+    "mastiff",
+    "mink",
+    "mole",
+    "mongreldog",
+    "mongrel",
+    "mountainhare",
+    "nebelungcat",
+    "newfoundland",
+    "nightjar",
+    "occamy",
+    "ocicat",
+    "orangutan",
+    "orca",
+    "oryx",
+    "osprey",
+    "otter",
+    "peacock",
+    "pheasant",
+    "piebaldmare",
+    "piebaldstallion",
+    "pinemarten",
+    "polarbear",
+    "polecat",
+    "python",
+    "ragdollcat",
+    "rattlesnake",
+    "rat",
+    "raven",
+    "redsquirrel",
+    "rhinoceros",
+    "robin",
+    "rottweiler",
+    "runespoor",
+    "russianbluecat",
+    "salmon",
+    "scopsowl",
+    "seal",
+    "shark",
+    "shrew",
+    "siberiancat",
+    "snowyowl",
+    "sparrowhawk",
+    "sparrow",
+    "sphynxcat",
+    "stag",
+    "stbernarddog",
+    "stoat",
+    "swallow",
+    "swift",
+    "thestral",
+    "tiger",
+    "tigress",
+    "tonkinesecat",
+    "tortoiseshellcat",
+    "unicorn",
+    "vole",
+    "vulture",
+    "weasel",
+    "westhighlandterrier",
+    "whitemare",
+    "whitestallion",
+    "whiteswan",
+    "wildboar",
+    "wildcat",
+    "wildrabbit",
+    "wolf",
+    "woodmouse"
+};
+
+static constexpr size_t kPatronusCount = sizeof(kPatroni) / sizeof(kPatroni[0]);
+
 class WebPage
 {
 private:
@@ -30,6 +188,7 @@ private:
     void handleJson();
     void handleWands();
     void handleSelectWand();
+    void handleSelectSettings();
     void handleGesture();
     void handleRecordedGesture();
     String generateGestureSvg(size_t gestureIndex);
@@ -66,6 +225,7 @@ void WebPage::Init()
     server.on("/json", std::bind(&WebPage::handleJson, this));
     server.on("/wands", std::bind(&WebPage::handleWands, this));
     server.on("/selectwand", HTTP_POST, std::bind(&WebPage::handleSelectWand, this));
+    server.on("/selectsettings", HTTP_POST, std::bind(&WebPage::handleSelectSettings, this));
     server.on("/gesture", std::bind(&WebPage::handleGesture, this));
     server.on("/recorded_gesture", std::bind(&WebPage::handleRecordedGesture, this));
     // choose bin file
@@ -286,6 +446,53 @@ void WebPage::handleRoot()
                    "hlen</button></form></td></tr>";
     }
     message += "</table>";
+    message += "<h2>Zauberer</h2>";
+
+    message += "<form action=\"/selectsettings\" method=\"post\">";
+
+    message += "<div>";
+    message += "<label for=\"house\">Haus: </label>";
+    message += "<select name=\"house\" id=\"house\">";
+
+    const String currentHouse = NVMData::get().GetHouse();
+
+    for (const char* house : kHouses)
+    {
+        message += "<option value=\"" + String(house) + "\"";
+        if (currentHouse == house)
+        {
+            message += " selected";
+        }
+        message += ">" + String(house) + "</option>";
+    }
+
+    message += "</select>";
+    message += "</div>";
+
+    message += "<div>";
+    message += "<label for=\"patronus\">Patronus: </label>";
+    message += "<select name=\"patronus\" id=\"patronus\">";
+
+    const String currentPatronus = NVMData::get().GetPatronus();
+
+    for (const char* patronus : kPatroni)
+    {
+        message += "<option value=\"" + String(patronus) + "\"";
+        if (currentPatronus == patronus)
+        {
+            message += " selected";
+        }
+        message += ">" + String(patronus) + "</option>";
+    }
+
+    message += "</select>";
+    message += "</div>";
+
+    message += "<div>";
+    message += "<button type=\"submit\">Speichern</button>";
+    message += "</div>";
+
+    message += "</form>";
     message += "<p>Bluetooth: " + DynamicData::get().lastBLEEvent + "</p>";
     message += "<p>Verbindung: " + String(DynamicData::get().connected ? "verbunden" : "nicht verbunden") + "</p>";
     message += "<p>IMU: GX=" + String(DynamicData::get().gx) + " GY=" + String(DynamicData::get().gy) + " GZ=" + String(DynamicData::get().gz);
@@ -379,7 +586,17 @@ void WebPage::handleSelectWand()
 
     server.send(400, "text/plain", "Wand was not found in the current scan results.");
 }
+void WebPage::handleSelectSettings()
+{
+    const String house = server.arg("house");
+    const String patronus = server.arg("patronus");
 
+    NVMData::get().SetHouse(house);
+    NVMData::get().SetPatronus(patronus);
+
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
 void WebPage::handleGesture()
 {
     const String requestedIndex = server.arg("id");
@@ -407,10 +624,18 @@ void WebPage::handleRecordedGesture()
         points += String(800 - (400 * DynamicData::get().posY[i] + 400)) + " ";
     }
 
+    String simplifiedPoints = "";
+    for (int i = 0; i < DynamicData::get().reducedSampleCounter; ++i)
+    {
+        simplifiedPoints += String(400 * DynamicData::get().posXreduced[i] + 400) + ",";
+        simplifiedPoints += String(800 - (400 * DynamicData::get().posYreduced[i] + 400)) + " ";
+    }
+
     String svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
     svg += "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 800\">";
     svg += "<rect width=\"800\" height=\"800\" fill=\"#f8fafc\"/>";
     svg += "<polyline points=\"" + points + "\" fill=\"none\" stroke=\"#2563eb\" stroke-width=\"12\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
+    svg += "<polyline points=\"" + simplifiedPoints + "\" fill=\"none\" stroke=\"#000000\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
     svg += "</svg>";
 
     server.send(200, "image/svg+xml; charset=utf-8", svg);

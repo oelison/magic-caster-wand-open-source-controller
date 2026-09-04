@@ -12,6 +12,7 @@ from scope import Scope
 
 ADDRESS1 = "F6:EE:A5:C8:0F:A0" # MCW-9886
 ADDRESS2 = "E7:67:93:87:98:86" # MCW-0FA0
+ADDRESS3 = "FC:9A:75:9F:D3:20" # MCW-D320
 
 SERVICE_NOTIFY = "57420003-587E-48A0-974C-544D6163C577"
 SERVICE_WRITE  = "57420002-587E-48A0-974C-544D6163C577"
@@ -327,7 +328,7 @@ async def main():
 
     
 
-    async with BleakClient(ADDRESS1) as client:
+    async with BleakClient(ADDRESS3) as client:
         print("Connected:", client.is_connected)
 
         await client.start_notify(

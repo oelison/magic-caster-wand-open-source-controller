@@ -68,6 +68,9 @@ public:
     float posX[1000];
     float posY[1000];
     bool dataValid = false;
+    float posXreduced[20];
+    float posYreduced[20];
+    int reducedSampleCounter = 0;
 
     bool gestureRecording = false;
     bool gestureValid = false;

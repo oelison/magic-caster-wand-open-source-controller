@@ -15,6 +15,8 @@ private:
     const char* prefKeyWandAddress = "wand_addr";
     const char* prefKeyNamespace = "battery";
     const char* prefKeyOperatingHourCounter = "OHC";
+    const char* prefKeyHouse = "house";
+    const char* prefKeyPatronus = "patronus";
     const int prefKeyPowerSourceSerialDefault = 0;
     const uint32_t prefKeyOffsetDefault = 0;
 
@@ -26,6 +28,8 @@ private:
     bool NetPasswordValid = false;
     String WandName = "";
     String WandAddress = "";
+    String House = "";
+    String Patronus = "";
     int PV_U_ID = 0;
     int PV_I_ID = 0;
     int PV_P_ID = 0;
@@ -45,11 +49,14 @@ public:
     void SetDisplayIP(String newDisplayIP);
     void SetCCUIDs(int U_ID, int I_ID, int P_ID);
     void SetCurrentOffset(int offset);
+    void SetHouse(const String &house);
+void SetPatronus(const String &patronus);
     String GetNetName();
     String GetNetPassword();
     String GetWandName();
     String GetWandAddress();
-    
+    String GetHouse();
+    String GetPatronus();
     bool NetDataValid();
 };
 
@@ -61,6 +68,8 @@ void NVMData::Init()
     NetPassword = preferences.getString(prefKeyPSK, prefDefaultValue);
     WandName = preferences.getString(prefKeyWandName, "");
     WandAddress = preferences.getString(prefKeyWandAddress, "");
+    House = preferences.getString(prefKeyHouse, "");
+    Patronus = preferences.getString(prefKeyPatronus, "");
     preferences.end();
     if (NetName != prefDefaultValue)
     {
@@ -107,6 +116,32 @@ void NVMData::SetWand(const String &name, const String &address)
     preferences.putString(prefKeyWandName, WandName);
     preferences.putString(prefKeyWandAddress, WandAddress);
     preferences.end();
+}
+void NVMData::SetHouse(const String &house)
+{
+    House = house;
+
+    Preferences preferences;
+    preferences.begin(prefKeyNamespace, false);
+    preferences.putString(prefKeyHouse, House);
+    preferences.end();
+}
+void NVMData::SetPatronus(const String &patronus)
+{
+    Patronus = patronus;
+
+    Preferences preferences;
+    preferences.begin(prefKeyNamespace, false);
+    preferences.putString(prefKeyPatronus, Patronus);
+    preferences.end();
+}
+String NVMData::GetHouse()
+{
+    return House;
+}
+String NVMData::GetPatronus()
+{
+    return Patronus;
 }
 String NVMData::GetNetName()
 {
