@@ -77,11 +77,23 @@ void setupWiFi()
 
     if (WiFi.status() == WL_CONNECTED) {
         DynamicData::get().ipaddress = WiFi.localIP().toString();
+        Serial.printf("Connected to WiFi. IP address: %s\n", DynamicData::get().ipaddress.c_str());
     } else {
         DynamicData::get().setNewNetwork = true;
-        WiFi.mode(WIFI_AP);
+        WiFi.mode(WIFI_AP_STA);
         WiFi.softAP(hostname, "alohomora");
         DynamicData::get().ipaddress = WiFi.softAPIP().toString();
+        Serial.println("Failed to connect to WiFi. Starting AP mode.");
+    }
+}
+
+void Wifi_check() {
+    if (NVMData::get().NetDataValid() && DynamicData::get().setNewNetwork) {
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("WiFi connected. IP address: " + WiFi.localIP().toString());
+            WiFi.mode(WIFI_STA);
+            DynamicData::get().setNewNetwork = false;
+        }
     }
 }
 
@@ -441,26 +453,38 @@ int match_spell(const CandidateSegment *candidate, int candidateCount, const Ges
             static_cast<int>(candidate[i].length) -
             static_cast<int>(spell.segments[i].length)
         );
+        String logText = "";
+        logText += " Spell name: ";
+        logText += spell.name;
+        logText += "\n";
 
-        Serial.printf(" Spell name: %s\n", spell.name);
-        Serial.printf(
-            "    Seg %d: "
-            "dir %d/%d err=%d°  "
-            "len %d/%d err=%d\n",
-            i,
-            candidate[i].direction,
-            spell.segments[i].direction,
-            dirError,
-            static_cast<int>(candidate[i].length),
-            spell.segments[i].length,
-            lenError
-        );
+        logText += "    Seg ";
+        logText += i;
+        logText += ": dir ";
+        logText += candidate[i].direction;
+        logText += "/";
+        logText += spell.segments[i].direction;
+        logText += " err=";
+        logText += dirError;
+        logText += "°  len ";
+        logText += static_cast<int>(candidate[i].length);
+        logText += "/";
+        logText += spell.segments[i].length;
+        logText += " err=";
+        logText += lenError;
+        logText += "\n";
+        DynamicData::get().logText += logText;
+        Serial.printf(logText.c_str());
 
         if (dirError > MAX_DIR_ERROR) {
+            DynamicData::get().logText += "    Direction error too high. Rejecting spell.\n";
+            Serial.println("    Direction error too high. Rejecting spell.");
             return -1;
         }
 
         if (lenError > MAX_LEN_ERROR) {
+            DynamicData::get().logText += "    Length error too high. Rejecting spell.\n";
+            Serial.println("    Length error too high. Rejecting spell.");
             return -1;
         }
 
@@ -468,7 +492,8 @@ int match_spell(const CandidateSegment *candidate, int candidateCount, const Ges
 
         score += (MAX_LEN_ERROR - lenError);
     }
-
+    DynamicData::get().logText += "    Total score: " + String(score) + "\n";
+    Serial.printf("    Total score: %d\n", score);
     return score;
 }
 
@@ -491,23 +516,23 @@ const GestureReference* recognize_spell(
             candidateCount,
             spell
         );
-
         if (score < 0) {
             continue;
         }
-
-        Serial.printf(
-            "  %s score=%d\n",
-            spell.name,
-            score
-        );
+        Serial.printf("  %s score=%d\n", spell.name, score);
 
         if (score > *bestScore) {
             *bestScore = score;
             bestSpell = &spell;
         }
     }
-
+    DynamicData::get().logText += "Best spell: ";
+    if (bestSpell) {
+        DynamicData::get().logText += bestSpell->name;
+        DynamicData::get().logText += " (score=";
+        DynamicData::get().logText += String(*bestScore);
+        DynamicData::get().logText += ")\n";
+    }
     return bestSpell;
 }
 
@@ -615,7 +640,7 @@ int recognize_gesture()
     int count = DynamicData::get().sampleCounter;
 
     if (count < 2) {
-        return 0;
+        return -1;
     }
 
     for (int i = 0; i < count; ++i) {
@@ -631,15 +656,14 @@ int recognize_gesture()
     }
     #endif
     int simple_count = simplify_points(points, count, 0.1f);
-    
-    Serial.printf("Gesture simplified from %d to %d points\n", count, simple_count);
+    String logText = "";
+    logText = "Gesture simplified from "+ String(count) + " to " + String(simple_count) + " points\n";
+    DynamicData::get().logText = logText;
+    Serial.printf(logText.c_str());
     for (int i = 0; i < simple_count; ++i) {
-        Serial.printf(
-            "Simplified Point %d: (%.3f, %.3f)\n",
-            i,
-            points[i].x,
-            points[i].y
-        );
+        logText = "Simplified Point " + String(i) + ": (" + String(points[i].x, 3) + ", " + String(points[i].y, 3) + ")\n";
+        DynamicData::get().logText += logText;
+        Serial.printf(logText.c_str());
         if (i < 20) {
             DynamicData::get().posXreduced[i] = points[i].x;
             DynamicData::get().posYreduced[i] = points[i].y;
@@ -650,57 +674,36 @@ int recognize_gesture()
     CandidateSegment segments[10];
     int segmentCount = 0;
 
-    create_segments(
-        points,
-        simple_count,
-        segments,
-        &segmentCount
-    );
+    create_segments(points, simple_count, segments, &segmentCount);
 
-    normalize_segments(
-        segments,
-        segmentCount
-    );
+    normalize_segments(segments, segmentCount);
 
-    Serial.printf(
-        "Created %d segments\n",
-        segmentCount
-    );
+    logText = "Created " + String(segmentCount) + " segments\n";
+    DynamicData::get().logText += logText;
+    Serial.printf(logText.c_str());
     
     for (int i = 0; i < segmentCount; ++i) {
-        Serial.printf(
-            "Segment %d: dir=%d len=%d\n",
-            i,
-            segments[i].direction,
-            static_cast<int>(segments[i].length)
-        );
+        logText = "Segment " + String(i) + ": dir=" + String(segments[i].direction) + " len=" + String(static_cast<int>(segments[i].length)) + "\n";
+        DynamicData::get().logText += logText;
+        Serial.printf(logText.c_str());
     }
 
     int bestScore = 0;
 
-    const GestureReference *spell =
-        recognize_spell(
-            segments,
-            segmentCount,
-            &bestScore
-        );
+    const GestureReference *spell = recognize_spell(segments, segmentCount, &bestScore);
 
     if (!spell) {
-        Serial.println("No matching spell");
-        return 0;
+        logText = "No matching spell\n";
+        DynamicData::get().logText += logText;
+        Serial.println(logText.c_str());
+        return -1;
     }
 
     broadcastSpell(spell->name);
 
-    int spellIndex =
-        spell - kGestureReferences;
+    int spellIndex = spell - kGestureReferences;
 
-    Serial.printf(
-        "Recognized spell: %s (index=%d, score=%d)\n",
-        spell->name,
-        spellIndex,
-        bestScore
-    );
+    Serial.printf("Recognized spell: %s (index=%d, score=%d)\n", spell->name, spellIndex, bestScore);
     return spellIndex;
 }
 
@@ -716,13 +719,15 @@ void gestureComplete()
         return;
     }
     const int spellIndex = recognize_gesture();
-    if (spellIndex > 0) {
+    if (spellIndex >= 0) {
         Serial.printf("Gesture Complete - Recognized spell index: %d\n", spellIndex);
         DynamicData::get().lastBLEEvent = "Gesture Complete - Recognized spell index: " + String(spellIndex);
+        DynamicData::get().logText += "green!";
         spellFound = true;
     } else {
         Serial.println("No matching spell recognized.");
         DynamicData::get().lastBLEEvent = "No matching spell recognized.";
+        DynamicData::get().logText += "red!";
         spellFound = false;
     }
 }
@@ -1069,6 +1074,7 @@ void checkNetworkSet()
             NVMData::get().StoreNetData();
         }
     }
+    Wifi_check();
 }
 void loop()
 {

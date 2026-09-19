@@ -142,7 +142,7 @@ static constexpr GestureSegment kTheSleepingCharmSegments[] = {
     {90, 175},
 };
 
-static constexpr GestureSegment kTheStretchingJinxSegments[] = {
+static constexpr GestureSegment kTheStrechingJinxSegments[] = {
     {85, 480},
     {210, 75},
     {90, 445},
@@ -175,7 +175,7 @@ static constexpr GestureReference kGestureReferences[] = {
     {"Reducto", kReductoSegments, 3 },
     {"Stupefy", kStupefySegments, 2 },
     {"The Sleeping Charm", kTheSleepingCharmSegments, 5 },
-    {"The Stretching Jinx", kTheStretchingJinxSegments, 3 },
+    {"The Streching Jinx", kTheStrechingJinxSegments, 3 },
     {"Ventus", kVentusSegments, 2 },
 };
 

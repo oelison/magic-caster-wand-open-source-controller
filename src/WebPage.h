@@ -635,7 +635,8 @@ void WebPage::handleRecordedGesture()
 {
     if (!DynamicData::get().dataValid)
     {
-        server.send(400, "text/plain", "No valid recorded gesture data available.");
+        server.send(400, "text/plain",
+                    "No valid recorded gesture data available.");
         return;
     }
 
@@ -653,14 +654,100 @@ void WebPage::handleRecordedGesture()
         simplifiedPoints += String(800 - (400 * DynamicData::get().posYreduced[i] + 400)) + " ";
     }
 
-    String svg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
-    svg += "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 800\">";
-    svg += "<rect width=\"800\" height=\"800\" fill=\"#f8fafc\"/>";
-    svg += "<polyline points=\"" + points + "\" fill=\"none\" stroke=\"#2563eb\" stroke-width=\"12\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
-    svg += "<polyline points=\"" + simplifiedPoints + "\" fill=\"none\" stroke=\"#000000\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
-    svg += "</svg>";
+    // HTML-Seite aufbauen
+    String html = "<!DOCTYPE html>";
+    html += "<html lang=\"de\">";
+    html += "<head>";
+    html += "<meta charset=\"UTF-8\">";
+    html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">";
+    html += "<title>Recorded Gesture</title>";
 
-    server.send(200, "image/svg+xml; charset=utf-8", svg);
+    html += "<style>";
+
+    html += "body {";
+    html += "  font-family: sans-serif;";
+    html += "  margin: 20px;";
+    html += "}";
+
+    // SVG und Log nebeneinander
+    html += ".container {";
+    html += "  display: flex;";
+    html += "  flex-direction: row;";
+    html += "  align-items: flex-start;";
+    html += "  gap: 20px;";
+    html += "}";
+
+    html += ".gesture {";
+    html += "  flex: 0 1 800px;";
+    html += "  min-width: 0;";
+    html += "}";
+
+    html += "svg {";
+    html += "  width: 100%;";
+    html += "  height: auto;";
+    html += "  display: block;";
+    html += "}";
+
+    html += ".log-container {";
+    html += "  flex: 1 1 400px;";
+    html += "  min-width: 0;";
+    html += "}";
+
+    html += ".log {";
+    html += "  padding: 10px;";
+    html += "  background: #f1f5f9;";
+    html += "  border: 1px solid #cbd5e1;";
+    html += "  white-space: pre-wrap;";
+    html += "  font-family: monospace;";
+    html += "  overflow-x: auto;";
+    html += "  overflow-y: auto;";
+    html += "  max-height: 800px;";
+    html += "}";
+
+    // Bei schmalen Bildschirmen untereinander
+    html += "@media (max-width: 900px) {";
+    html += "  .container {";
+    html += "    flex-direction: column;";
+    html += "  }";
+    html += "  .gesture, .log-container {";
+    html += "    flex-basis: auto;";
+    html += "    width: 100%;";
+    html += "  }";
+    html += "}";
+
+    html += "</style>";
+
+    html += "</head>";
+    html += "<body>";
+
+    html += "<h2>Recorded Gesture</h2>";
+
+    html += "<div class=\"container\">";
+
+    // SVG links
+    html += "<div class=\"gesture\">";
+    html += "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 800 800\">";
+    html += "<rect width=\"800\" height=\"800\" fill=\"#f8fafc\"/>";
+    html += "<polyline points=\"" + points + "\" fill=\"none\" stroke=\"#2563eb\" stroke-width=\"12\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
+    html += "<polyline points=\"" + simplifiedPoints + "\" fill=\"none\" stroke=\"#000000\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
+    html += "</svg>";
+    html += "</div>";
+
+    // Log rechts
+    html += "<div class=\"log-container\">";
+    html += "<h2>Log</h2>";
+    html += "<div class=\"log\">";
+    html += DynamicData::get().logText;
+    html += "</div>";
+    html += "</div>";
+
+    html += "</div>";
+
+    html += "</body>";
+    html += "</html>";
+
+    // HTML senden
+    server.send(200, "text/html; charset=utf-8", html);
 }
 
 String WebPage::generateGestureSvg(size_t gestureIndex)

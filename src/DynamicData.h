@@ -74,6 +74,7 @@ public:
 
     bool gestureRecording = false;
     bool gestureValid = false;
+    String logText = "";
 
     unsigned int getErrorCounter();
     void incErrorCounter(String message);
